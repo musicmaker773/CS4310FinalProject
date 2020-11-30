@@ -1,26 +1,45 @@
 #include <strings.h>
 #include <pthread.h>
 #include "common.h"
+#include "myqueue.h"
 
+
+pthread_t thread_pool[THREAD_POOL_SIZE];
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+int patientSize = 0;
+int numOfPatients = 0;
 
 struct patient {
-    char *name;
-    char *q1;
-    char *q2;
-    char *q3;
-    char *date;
-    char *time;
+    char name[60];
+    char q1[4];
+    char q2[4];
+    char q3[4];
+    char date[9];
+    char time[5];
+    int cancelled;
 };
+
+struct patient patients[20];
+
+
 
 uint8_t recvline[MAXLINE+1];
 uint8_t buff[MAXLINE+1];
 
 void *handle_connection(void *client_socket);
 
+void * thread_function(void *arg);
+
 int main(int argc, char **argv) {
     
     int listenfd,connfd;
     struct sockaddr_in servaddr;
+    
+    
+    for(int i=0; i < THREAD_POOL_SIZE; i++) {
+        pthread_create(&thread_pool[i], NULL, thread_function, NULL);
+    }
     
     if((listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
         err_n_die("socket error.");
@@ -49,13 +68,26 @@ int main(int argc, char **argv) {
         inet_ntop(AF_INET, &addr, client_address, MAXLINE);
         printf("Client connection: %s\n", client_address);
         
-        pthread_t t;
+        
         int *pclient = malloc(sizeof(int));
         *pclient = connfd;
-        pthread_create(&t, NULL, handle_connection, pclient);
+        pthread_mutex_lock(&mutex);
+        enqueue(pclient);
+        pthread_mutex_unlock(&mutex);
+        // pthread_create(&t, NULL, handle_connection, pclient);
         
         
         
+        }
+    }
+    void * thread_function(void *arg) {
+        while(1) {
+            pthread_mutex_lock(&mutex);
+            int *pclient = dequeue();
+            pthread_mutex_unlock(&mutex);
+            if(pclient != NULL) {
+                handle_connection(pclient);
+            }
         }
     }
     
@@ -74,20 +106,14 @@ int main(int argc, char **argv) {
         }
         if (n < 0)
             err_n_die("read error");
+
         
-        
-        
-        // printf("%s\n", recvline);
-        
-        char *chatstart = "<p>Chatbot: Hello, ";
-        char *chatend = "!</p>\r\n";
-        
-        
-        if (strstr((const char*)recvline, "favicon") != NULL) {
+        if (strstr((const char*)recvline, "favicon.ico") != NULL) {
             // contains
-        }
-        else if(strstr((const char*)recvline, "GET /?name") != NULL) {
-            char webpage[10000];
+            
+            
+        }else if(strstr((const char*)recvline, "GET /?name") != NULL) {
+            char webpage[20000];
             
             char *req = (char*)recvline;
             char delim[] = "=";
@@ -246,9 +272,387 @@ int main(int argc, char **argv) {
             write(connfd, (char*) buff, strlen((char *)buff));
             close(connfd);
             // strcpy(webpage, "");
-        }
+        }else if (strstr((const char*)recvline,"GET /?q1=") != NULL) {
+            char *req = (char*)recvline;
         
-        else {
+            char delim[] = "=";
+           char delim2[] = " ";
+           char delim3[] = "&";
+
+           
+            char *tempptr = strtok(req, delim);
+           tempptr = strtok(NULL, delim3);
+           
+           char *q1 = tempptr;
+           
+           tempptr = strtok(NULL, delim);
+           tempptr = strtok(NULL, delim3);
+           
+           char *q2 = tempptr;
+           
+           tempptr = strtok(NULL, delim);
+           tempptr = strtok(NULL, delim3);
+           
+           char *q3 = tempptr;
+           
+           tempptr = strtok(NULL, delim);
+           tempptr = strtok(NULL, delim3);
+           
+           char *date = tempptr;
+           
+           tempptr = strtok(NULL, delim);
+           tempptr = strtok(NULL, delim3);
+           
+           char *time = tempptr;
+           
+           tempptr = strtok(NULL, delim);
+           tempptr = strtok(NULL, delim2);
+           
+           char *name = tempptr;
+            char *t;
+            char tt[strlen(name)];
+           if (strstr(name, "+") != NULL) {
+                int i = 0;
+                for (t = name; *t != '\0'; t++) {
+                    if(*t == '+') {
+                        tt[i] = ' ';
+                    }
+                    else {
+                        tt[i] = *t;
+                    }
+                    i++;
+                }
+                name = tt;
+            }
+           
+            int checkName = 0; // false
+            int cni = 0;
+           // printf("%s\n", q1);
+            char altmes[50];
+            
+           if (patientSize == 0) {
+               strcpy(patients[0].name, (const char*)name);
+               strcpy(patients[0].q1, (const char*)q1);
+               strcpy(patients[0].q2,(const char*)q2);
+               strcpy(patients[0].q3, (const char*)q3);
+               strcpy(patients[0].date,(const char*)date);
+               strcpy(patients[0].time, (const char*)time);
+               patients[0].cancelled = 0;
+               
+               // printf("%s\n", patients[0].name);
+               strcpy(altmes, "");
+               numOfPatients++;
+               patientSize++;
+           } else {
+               
+               for (int i = 0; i < patientSize; i++) {
+                   if((strstr(patients[i].date,(const char*)date) != NULL) && (patients[i].cancelled == 0)){
+                       if(strstr(patients[i].time,(const char*)time) != NULL){
+                           char webpage[] = "HTTP/1.0 200 OK\r\n\r\n"
+                           "<!DOCTYPE html>\r\n"
+                           "<html>\r\n"
+                           "<head>\r\n"
+                           "<title>Coronavirus ChatBot Scheduler</title>\r\n"
+                           "<style>\r\n"
+                           "body {background-color: powderblue;}\r\n"
+                           "</style>\r\n"
+                           "</head>\r\n"
+                           "<body>\r\n"
+                           "<h1>Sorry...</h1>\r\n"
+                           "<p>Sorry, but this time has already been taken. Please login with your name and try again.</p>\r\n"
+                           "<form method=\"GET\">\r\n"
+                           "<input id=\"get\" type=\"submit\" value=\"Back to Menu\" />\r\n"
+                           "</form>\r\n"
+                           "</body>\r\n"
+                           "</html>\r\n";
+                           
+                           snprintf((char*)buff, sizeof(buff), "%s", webpage);
+                           
+                           write(connfd, (char*) buff, strlen((char *)buff));
+                           close(connfd);
+                           
+                           return NULL;
+                       }
+                   }
+                   if (strstr(patients[i].name,(const char*)name) != NULL) {
+                        checkName = 1; // true
+                        cni = i;
+                       
+                   }
+                   
+               }
+               if (checkName == 1) {
+                   
+                
+                   strcpy(patients[cni].q1, (const char*)q1);
+                   strcpy(patients[cni].q2,(const char*)q2);
+                   strcpy(patients[cni].q3, (const char*)q3);
+                   strcpy(patients[cni].date,(const char*)date);
+                   strcpy(patients[cni].time, (const char*)time);
+                
+                   if (patients[cni].cancelled == 1) {
+                       patients[cni].cancelled = 0;
+                       strcpy(altmes, "");
+                   } else {
+                       strcpy(altmes, "You have sucessfully rescheduled.");
+                   }
+                   
+               } else {
+                   
+                   strcpy(patients[patientSize].name, (const char*)name);
+                   strcpy(patients[patientSize].q1, (const char*)q1);
+                   strcpy(patients[patientSize].q2,(const char*)q2);
+                   strcpy(patients[patientSize].q3, (const char*)q3);
+                   strcpy(patients[patientSize].date,(const char*)date);
+                   strcpy(patients[patientSize].time, (const char*)time);
+                   patients[patientSize].cancelled = 0;
+                   
+                   strcpy(altmes, "");
+                   numOfPatients++;
+                   patientSize++;
+               }
+               
+           }
+            
+            printf("%d", patientSize);
+            char webpage[10000];
+            sprintf(webpage,"HTTP/1.0 200 OK\r\n\r\n"
+                    "<!DOCTYPE html>\r\n"
+                    "<html>\r\n"
+                    "<head>\r\n"
+                    "<title>Coronavirus ChatBot Scheduler</title>\r\n"
+                    "<style>\r\n"
+                    "body {background-color: powderblue;}\r\n"
+                    "</style>\r\n"
+                    "</head>\r\n"
+                    "<body>\r\n"
+                    "<h1>Thank you %s for your time.</h1>\r\n"
+                    "<p>%s We will be seeing you at %s on %s.</p>\r\n"
+                    "<form method=\"GET\">\r\n"
+                    "<input id=\"get\" type=\"submit\" value=\"Back to Menu\" />\r\n"
+                    "</form>\r\n"
+                    "</body>\r\n"
+                    "</html>\r\n", name, altmes, time, date);
+            
+            snprintf((char*)buff, sizeof(buff), "%s", webpage);
+            
+            write(connfd, (char*) buff, strlen((char *)buff));
+            close(connfd);
+            
+        }else if (strstr((const char*)recvline,"POST /") != NULL) {
+            
+            
+            char webpage[] = "HTTP/1.0 200 OK\r\n\r\n"
+                    "<!DOCTYPE html>\r\n"
+                    "<html>\r\n"
+                    "<head>\r\n"
+                    "<title>Coronavirus ChatBot Scheduler</title>\r\n"
+                    "<style>\r\n"
+                    "body {background-color: powderblue;}\r\n"
+                    "</style>\r\n"
+                    "</head>\r\n"
+                    "<body>\r\n"
+                    "<h1>Cancel or Check Appointment</h1>\r\n"
+                    "<p>Type your name and we'll see if we can check or cancel appointment.</p>\r\n"
+                    "<form method=\"GET\">\r\n"
+                    "<label for=\"choice\">Choose either check or cancel:</label>\r\n"
+                    "<select name=\"choice\" id=\"choice\">\r\n"
+                    "<option value=\"check\">Check</option>\r\n"
+                    "<option value=\"cancel\">Canel</option>\r\n"
+                    "</select>\r\n"
+                    "<br><br>\r\n"
+                    "<input type=\"text\" name=\"name\"/>\r\n"
+                    "<input id=\"get\" type=\"submit\" value=\"Next\" />\r\n"
+                    "</form>\r\n"
+                    "<form method=\"GET\">\r\n"
+                    "<input id=\"get\" type=\"submit\" value=\"Back to Menu\" />\r\n"
+                    "</form>\r\n"
+                    "</body>\r\n"
+                    "</html>\r\n";
+            
+            snprintf((char*)buff, sizeof(buff), "%s", webpage);
+            
+            write(connfd, (char*) buff, strlen((char *)buff));
+            close(connfd);
+            
+            
+            
+        }else if (strstr((const char*)recvline,"GET /?choice=cancel") != NULL) {
+            
+            char webpage[10000];
+            char *req = (char*)recvline;
+            char delim[] = "=";
+            char delim2[] = " ";
+            char delim3[] = "&";
+            
+            char *tempptr = strtok(req, delim);
+            tempptr = strtok(NULL, delim3);
+            tempptr = strtok(NULL, delim);
+            tempptr = strtok(NULL, delim2);
+            
+            
+            char *name = tempptr;
+            char *t;
+            char tt[strlen(name)];
+            if (strstr(name, "+") != NULL) {
+                int i = 0;
+                for (t = name; *t != '\0'; t++) {
+                    if(*t == '+') {
+                        tt[i] = ' ';
+                    }
+                    else {
+                        tt[i] = *t;
+                    }
+                    i++;
+                }
+                name = tt;
+            }
+            for (int i = 0; i < patientSize; i++) {
+                if((strstr(patients[i].name,(const char*)name) != NULL) && (patients[i].cancelled == 0)){
+                    
+                    patients[i].cancelled = 1;
+                    numOfPatients--;
+                    
+                    sprintf(webpage, "HTTP/1.0 200 OK\r\n\r\n"
+                            "<!DOCTYPE html>\r\n"
+                            "<html>\r\n"
+                            "<head>\r\n"
+                            "<title>Coronavirus ChatBot Scheduler</title>\r\n"
+                            "<style>\r\n"
+                            "body {background-color: powderblue;}\r\n"
+                            "</style>\r\n"
+                            "</head>\r\n"
+                            "<body>\r\n"
+                            "<h1>Okay, %s...</h1>\r\n"
+                            "<p>You have sucessfully cancelled your appointment that was scheduled at %s on %s.</p>\r\n"
+                            "<form method=\"GET\">\r\n"
+                            "<input id=\"get\" type=\"submit\" value=\"Back to Menu\" />\r\n"
+                            "</form>\r\n"
+                            "</body>\r\n"
+                            "</html>\r\n", patients[i].name, patients[i].time, patients[i].date);
+                    snprintf((char*)buff, sizeof(buff), "%s", webpage);
+                    
+                    write(connfd, (char*) buff, strlen((char *)buff));
+                    close(connfd);
+                    
+                    return NULL;
+                }
+            }
+            
+            sprintf(webpage, "HTTP/1.0 200 OK\r\n\r\n"
+                    "<!DOCTYPE html>\r\n"
+                    "<html>\r\n"
+                    "<head>\r\n"
+                    "<title>Coronavirus ChatBot Scheduler</title>\r\n"
+                    "<style>\r\n"
+                    "body {background-color: powderblue;}\r\n"
+                    "</style>\r\n"
+                    "</head>\r\n"
+                    "<body>\r\n"
+                    "<h1>Appointment doesn't exist.</h1>\r\n"
+                    "<p>Sorry, %s, but it seems we didn't find an appointment under your name to cancel.</p>\r\n"
+                    "<form method=\"GET\">\r\n"
+                    "<input id=\"get\" type=\"submit\" value=\"Back to Menu\" />\r\n"
+                    "</form>\r\n"
+                    "</body>\r\n"
+                    "</html>\r\n", name);
+            snprintf((char*)buff, sizeof(buff), "%s", webpage);
+            
+            write(connfd, (char*) buff, strlen((char *)buff));
+            close(connfd);
+            
+            return NULL;
+            
+            
+            
+            
+        }
+        else if (strstr((const char*)recvline,"GET /?choice=check") != NULL) {
+            
+            char webpage[10000];
+            char *req = (char*)recvline;
+            char delim[] = "=";
+            char delim2[] = " ";
+            char delim3[] = "&";
+            
+            char *tempptr = strtok(req, delim);
+            tempptr = strtok(NULL, delim3);
+            tempptr = strtok(NULL, delim);
+            tempptr = strtok(NULL, delim2);
+            
+            
+            char *name = tempptr;
+            char *t;
+            char tt[strlen(name)];
+            if (strstr(name, "+") != NULL) {
+                int i = 0;
+                for (t = name; *t != '\0'; t++) {
+                    if(*t == '+') {
+                        tt[i] = ' ';
+                    }
+                    else {
+                        tt[i] = *t;
+                    }
+                    i++;
+                }
+                name = tt;
+            }
+            
+            for (int i = 0; i < patientSize; i++) {
+                if((strstr(patients[i].name,(const char*)name) != NULL) && (patients[i].cancelled == 0)){
+                    sprintf(webpage, "HTTP/1.0 200 OK\r\n\r\n"
+                            "<!DOCTYPE html>\r\n"
+                            "<html>\r\n"
+                            "<head>\r\n"
+                            "<title>Coronavirus ChatBot Scheduler</title>\r\n"
+                            "<style>\r\n"
+                            "body {background-color: powderblue;}\r\n"
+                            "</style>\r\n"
+                            "</head>\r\n"
+                            "<body>\r\n"
+                            "<h1>Okay, %s...</h1>\r\n"
+                            "<p>Your appointment is at %s on %s.</p>\r\n"
+                            "<form method=\"GET\">\r\n"
+                            "<input id=\"get\" type=\"submit\" value=\"Back to Menu\" />\r\n"
+                            "</form>\r\n"
+                            "</body>\r\n"
+                            "</html>\r\n", patients[i].name, patients[i].time, patients[i].date);
+                    snprintf((char*)buff, sizeof(buff), "%s", webpage);
+                    
+                    write(connfd, (char*) buff, strlen((char *)buff));
+                    close(connfd);
+                    
+                    return NULL;
+                }
+            }
+            
+            sprintf(webpage, "HTTP/1.0 200 OK\r\n\r\n"
+                    "<!DOCTYPE html>\r\n"
+                    "<html>\r\n"
+                    "<head>\r\n"
+                    "<title>Coronavirus ChatBot Scheduler</title>\r\n"
+                    "<style>\r\n"
+                    "body {background-color: powderblue;}\r\n"
+                    "</style>\r\n"
+                    "</head>\r\n"
+                    "<body>\r\n"
+                    "<h1>Sorry...</h1>\r\n"
+                    "<p>Sorry, %s, but you don't have an appointment. You can create one at the home page.</p>\r\n"
+                    "<form method=\"GET\">\r\n"
+                    "<input id=\"get\" type=\"submit\" value=\"Back to Menu\" />\r\n"
+                    "</form>\r\n"
+                    "</body>\r\n"
+                    "</html>\r\n", name);
+            snprintf((char*)buff, sizeof(buff), "%s", webpage);
+            
+            write(connfd, (char*) buff, strlen((char *)buff));
+            close(connfd);
+            
+            return NULL;
+            
+                    
+                    
+        }else {
             char webpage[] = "HTTP/1.0 200 OK\r\n\r\n"
             "<!DOCTYPE html>\r\n"
             "<html>\r\n"
@@ -265,6 +669,10 @@ int main(int argc, char **argv) {
             "<input type=\"text\" name=\"name\"/>\r\n"
             "<input id=\"get\" type=\"submit\" value=\"submit\" />\r\n"
             "</form>\r\n"
+            "<br><br>\r\n"
+            "<form method=\"POST\" enctype=\"text/plain\">\r\n"
+            "<input id=\"get\" type=\"submit\" value=\"Cancel or Check Appointment\" />\r\n"
+            "</form>\r\n"
             "</body>\r\n"
             "</html>\r\n";
             
@@ -279,5 +687,6 @@ int main(int argc, char **argv) {
     
     
 }
+
 
 
