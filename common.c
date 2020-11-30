@@ -16,6 +16,7 @@
 #include "common.h"
 
 #define SERVER_PORT 18000
+#define THREAD_POOL_SIZE 20
 
 #define MAXLINE 4096
 #define SA struct sockaddr
