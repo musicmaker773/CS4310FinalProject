@@ -4,14 +4,16 @@
 CC=clang
 CFLAGS= -g
 COMMON_OBJS = common.o
+SERVER_OBJS = myqueue.o
 
-all: $(COMMON_OBJS) tcps
+all: $(COMMON_OBJS) $(SERVER_OBJS) tcps
 
 common.o: common.h common.c
 
+myqueue.o: myqueue.h myqueue.c
 
-tcps: tcpserver.c $(COMMON_OBJS)
-	$(CC) $(CFLAGS) -o tcps tcpserver.c $(COMMON_OBJS)
+tcps: tcpserver.c $(COMMON_OBJS) $(SERVER_OBJS)
+	$(CC) $(CFLAGS) -o tcps tcpserver.c $(COMMON_OBJS) $(SERVER_OBJS)
 
 clean:
 	rm -rf *.dSYM tcps
